@@ -303,3 +303,4 @@ Projeto privado / teste técnico — ajuste licença e guidelines de PR conforme
 ---
 
 *Documentação gerada para refletir o estado atual do repositório; após mudar `schema.prisma` ou contratos de API, mantenha migrations e este README alinhados ao que o time realmente executa em CI e em produção.*
+# test-medcof
