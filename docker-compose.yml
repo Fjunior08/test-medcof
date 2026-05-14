@@ -1,0 +1,98 @@
+# Medcof — local stack: MySQL + API + static UI (nginx proxies /api → backend).
+# Quick start: docker compose up --build
+# Optional: copy .env.docker.example to .env to override defaults.
+
+name: medcof
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: medcof-mysql
+    restart: unless-stopped
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-medcof_root_dev_only}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-medcof}
+      MYSQL_USER: ${MYSQL_USER:-medcof}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-medcof_app_dev_only}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - medcof_net
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'mysqladmin ping -h 127.0.0.1 -uroot -p"$$MYSQL_ROOT_PASSWORD" || exit 1',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: medcof-backend
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: "3000"
+      DATABASE_URL: mysql://${MYSQL_USER:-medcof}:${MYSQL_PASSWORD:-medcof_app_dev_only}@mysql:3306/${MYSQL_DATABASE:-medcof}
+      JWT_SECRET: ${JWT_SECRET:-medcof-local-docker-jwt-secret-change-me-32chars}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080,http://127.0.0.1:8080}
+      MYSQL_HOST: mysql
+    networks:
+      - medcof_net
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'wget -qO- http://127.0.0.1:3000/health >/dev/null || exit 1',
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: medcof-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - medcof_net
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -qO- http://127.0.0.1:80/ >/dev/null || exit 1",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+networks:
+  medcof_net:
+    driver: bridge
+    name: medcof_net
+
+volumes:
+  mysql_data:
+    name: medcof_mysql_data
